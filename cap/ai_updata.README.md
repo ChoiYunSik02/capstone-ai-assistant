@@ -1,459 +1,702 @@
-# 🤖 ARIA — Adaptive Reasoning Intelligence Assistant
+# ARIA — Adaptive Reasoning Intelligence Assistant
 
-> **완전 로컬 기반 · 프라이버시 중심 · MCP/A2A 표준 프로토콜 적용**
-> 인터넷 없이도 동작하고, 나를 진짜로 기억하는 AI 개인 비서
+> Windows 환경에서 실행되는 한국어 최적화 AI 개인 비서
+> Claude API 또는 Ollama(로컬 LLM) 기반 · PyQt6 데스크탑 앱
 
 ---
 
-## 📌 프로젝트 개요
+## 소개
 
-| 항목 | 내용 |
+ARIA는 개인 PC에서 완전히 로컬로 동작하는 AI 비서입니다.
+클라우드 서버 없이도 Ollama를 통해 오프라인으로 사용할 수 있으며, Claude API를 연결하면 더 높은 품질의 응답을 받을 수 있습니다.
+
+**핵심 설계 원칙**
+
+- **프라이버시 우선** — 모든 대화·일정·메모는 로컬 SQLite에만 저장됩니다
+- **도구 기반 추론** — AI가 직접 날씨·검색·파일·앱을 제어합니다 (MCP 패턴)
+- **한국어 최적화** — 시스템 프롬프트, 음성 인식, TTS 모두 한국어 기준
+- **멀티모달** — 텍스트·음성·이미지·문서를 하나의 인터페이스에서 처리
+
+---
+
+## 목차
+
+1. [주요 기능](#주요-기능)
+2. [시스템 구성도](#시스템-구성도)
+3. [아키텍처 상세](#아키텍처-상세)
+4. [설치 및 실행](#설치-및-실행)
+5. [환경 변수 설정](#환경-변수-설정)
+6. [사용 예시](#사용-예시)
+7. [커스터마이징](#커스터마이징)
+8. [도구 목록](#도구-목록)
+9. [디렉토리 구조](#디렉토리-구조)
+10. [트러블슈팅 / FAQ](#트러블슈팅--faq)
+11. [개발 참고](#개발-참고)
+12. [라이선스](#라이선스)
+
+---
+
+## 주요 기능
+
+| 기능 | 설명 |
 |------|------|
-| 프로젝트명 | ARIA (Adaptive Reasoning Intelligence Assistant) |
-| 개발 언어 | Python 3.10+ |
-| GUI 프레임워크 | PyQt6 |
-| 개발 기간 | 2025.03 ~ 2025.06 (약 4개월) |
-| 개발 인원 | 1인 (캡스톤 디자인) |
-| 핵심 프로토콜 | MCP (Model Context Protocol) + A2A (Agent-to-Agent Protocol) |
+| **AI 채팅** | Claude API / Ollama 전환 지원, 스트리밍 응답 |
+| **오늘 브리핑** | 앱 시작 시 날씨 + 일정 + 뉴스 자동 요약 |
+| **날씨 조회** | IP 자동 위치 감지, 미세먼지(PM2.5/PM10), 3일 예보 |
+| **실시간 뉴스** | DuckDuckGo 오늘 뉴스, 클릭 가능한 링크 표시 |
+| **일정 관리** | 자연어 일정 추가/조회/삭제, 팝업 알림 |
+| **메모장** | AI 자동 저장, 태그 검색, 웹 UI |
+| **달력** | 월별 일정 웹 대시보드 (localhost:7654) |
+| **파일 관리** | 파일 읽기/생성/삭제/이동/검색 |
+| **앱 실행** | 브라우저, 탐색기, 시스템 앱 자동 실행 |
+| **음성 입력(STT)** | 마이크 버튼(Push-to-talk) + 호출어 "아리아" |
+| **음성 출력(TTS)** | 음성 명령에만 자동 응답, Ollama 구어체 요약 후 읽기 |
+| **모바일 접속** | 같은 WiFi에서 스마트폰으로 채팅 (localhost:8765) |
+| **첨부파일** | 이미지, PDF, 문서, 코드 파일 분석 |
+| **장기 기억** | ChromaDB 벡터 검색 + SQLite 대화 이력 |
+| **일일 다이어리** | 대화 자동 Markdown 기록, 다음날 문맥 참고 |
+| **서브에이전트** | 복합 리서치·요약 작업을 별도 AI에 위임 (A2A) |
 
 ---
 
-## 🎯 제작 목적 및 차별화 전략
-
-### 기존 AI 비서의 한계
-
-| 문제점 | 기존 서비스 | ARIA |
-|---|---|---|
-| **개인정보 유출** | 모든 대화가 외부 서버 전송 | 100% 로컬 저장, 외부 전송 없음 |
-| **인터넷 의존** | 오프라인 사용 불가 | Ollama 로컬 모델로 완전 오프라인 동작 |
-| **기억 부재** | 대화 종료 시 기억 초기화 | ChromaDB 벡터 DB로 영구 장기 기억 |
-| **수동적 응답** | 물어봐야만 답변 | 패턴 학습 후 능동적으로 제안 |
-| **확장 불가** | 기능 추가 불가 폐쇄 구조 | MCP 플러그인 방식으로 자유롭게 확장 |
-| **단일 AI** | 하나의 모델이 모든 것 처리 | A2A 멀티 에이전트 협업 구조 |
-
-### 핵심 차별화 포인트
-
-```
-① 하이브리드 LLM  →  Ollama(무료/로컬) + Claude API(고성능) 자동 전환
-② MCP 표준 프로토콜  →  도구 추가 시 기존 코드 수정 없이 플러그인 방식 확장
-③ A2A 멀티 에이전트  →  전문 에이전트들이 병렬 협업으로 복잡한 작업 처리
-④ 장기 기억 (RAG)  →  과거 대화, 메모, 문서를 벡터 DB에 저장해 영구 기억
-⑤ 능동적 비서  →  사용자 패턴 학습 후 먼저 제안하고 의견을 제시
-```
-
----
-
-## 🏗️ 전체 시스템 블록도
+## 시스템 구성도
 
 ```mermaid
 graph TB
-    User["👤 사용자"]
-
     subgraph UI["🖥️ 사용자 인터페이스 (PyQt6)"]
-        Dashboard["메인 대시보드"]
-        ChatUI["💬 AI 채팅창"]
-        VoiceBtn["🎙️ 음성 입출력"]
-        ModelToggle["⚙️ LLM 전환 스위치\nOllama ↔ Claude"]
+        MW["MainWindow\n채팅 UI"]
+        SB["Sidebar\n날씨 · 뉴스 · 일정\n(QThread, 자동 갱신)"]
+        SN["ScheduleNotifier\n일정 팝업 알림"]
     end
 
-    subgraph LLMLayer["🧠 하이브리드 LLM Provider Layer"]
-        LLMManager["LLM Manager\n(자동 라우팅)"]
-        Claude["☁️ Claude API\nSonnet 4\n고성능 · 복잡한 작업"]
-        Ollama["💻 Ollama 로컬\nGemma3 12B\n무료 · 오프라인 · 빠름"]
+    subgraph INPUT["📥 입력"]
+        KB["키보드 입력"]
+        MIC["🎤 마이크 버튼\nPush-to-talk"]
+        WW["🔔 호출어 감지\n'아리아' Wake Word"]
+        ATT["📎 파일 첨부\n이미지·PDF·문서"]
     end
 
-    subgraph Orchestrator["🎯 메인 오케스트레이터"]
-        Router["Task Router\n의도 파악 및 에이전트 위임"]
-        ContextMgr["컨텍스트 매니저\n대화 흐름 유지"]
-        ProfileLearner["🔍 패턴 학습기\n사용자 습관 자동 분석"]
+    subgraph CORE["🧠 AI 에이전트 (core/)"]
+        AG["ARIAAgent\nagent.py"]
+        MEM["MemorySystem\n장기 기억\nChromaDB + SQLite"]
+        DIARY["Diary\n일일 대화 기록\nMarkdown"]
+        A2A["SubAgent\nA2A 위임\nResearch · Summary"]
+        REG["ToolRegistry\nmcp_server.py"]
     end
 
-    subgraph A2A["🤝 A2A 멀티 에이전트 (Agent-to-Agent Protocol)"]
-        ScheduleAgent["📅 스케줄러 Agent\n일정 등록 · 조회 · 알림"]
-        DocumentAgent["📄 문서 Agent\n파일 요약 · 분석"]
-        ResearchAgent["🔍 리서치 Agent\n웹 검색 · 뉴스 요약"]
-        MemoryAgent["🧠 메모리 Agent\n기억 저장 · 검색"]
+    subgraph LLM["🤖 LLM 백엔드"]
+        CL["☁️ Claude API\nclaude-sonnet-4-6"]
+        OL["🏠 Ollama\ngemma3 · qwen3"]
     end
 
-    subgraph MCP["🔌 MCP 서버 레이어 (Model Context Protocol)"]
-        CalMCP["📆 Calendar MCP\nadd / get / delete"]
-        FileMCP["📁 File MCP\nread / write / search"]
-        SearchMCP["🌐 Search MCP\nweb_search / summarize"]
-        MemoMCP["📝 Memo MCP\nsave / query / tag"]
-        VectorMCP["🗃️ Vector MCP\nembed / similarity_search"]
-        WeatherMCP["🌤️ Weather MCP\ncurrent / forecast"]
+    subgraph TOOLS["🔧 도구 (tools/)"]
+        T_BR["브리핑\nbriefing_tools"]
+        T_WE["날씨\nweather_tools"]
+        T_WB["웹 검색/뉴스\nweb_tools"]
+        T_SC["일정\nschedule_tools"]
+        T_MO["메모\nmemo_tools"]
+        T_FI["파일\nfile_tools"]
+        T_SY["시스템/앱\nsystem_tools"]
+        T_AL["알람\nalarm_tools"]
+        T_VO["음성 STT/TTS\nvoice_tools"]
     end
 
-    subgraph Data["💾 로컬 데이터 저장소 (완전 로컬)"]
-        ChromaDB["ChromaDB\n벡터 DB\n장기기억 · 문서 임베딩"]
-        SQLite["SQLite\n일정 · 메모\n구조화 데이터"]
-        Profile["사용자 프로필\n패턴 · 선호 · 관심사"]
+    subgraph SERVERS["🌐 웹 서버 (FastAPI)"]
+        CAL["달력\nlocalhost:7654"]
+        MEMO["메모장\nlocalhost:7655"]
+        MOB["모바일\nlocalhost:8765"]
     end
 
-    User <--> Dashboard
-    User <--> VoiceBtn
-    ModelToggle --> LLMManager
-    ChatUI --> LLMManager
+    subgraph DATA["💾 데이터 저장소"]
+        DB["aria.db\nSQLite\n대화·일정·사용자"]
+        MEMDB["memos.db\nSQLite\n메모"]
+        CHROMA["ChromaDB\n벡터 검색"]
+        DIARYF["diary/\nMarkdown\n일일 기록"]
+        LESSONS["lessons.json\n학습된 교정"]
+    end
 
-    LLMManager -->|"🌐 온라인 + 복잡"| Claude
-    LLMManager -->|"📴 오프라인 or 단순"| Ollama
-    Claude --> Router
-    Ollama --> Router
+    KB --> MW
+    MIC --> T_VO
+    WW --> T_VO
+    ATT --> MW
+    T_VO -->|"텍스트 변환"| MW
+    MW --> AG
+    SB --> T_WE
+    SB --> T_WB
+    SB --> T_SC
 
-    Router --> ScheduleAgent
-    Router --> DocumentAgent
-    Router --> ResearchAgent
-    Router --> MemoryAgent
-    Router <--> ContextMgr
-    ContextMgr --> ProfileLearner
+    AG --> MEM
+    AG --> DIARY
+    AG --> REG
+    AG --> A2A
+    AG --> CL
+    AG --> OL
 
-    ScheduleAgent -->|MCP| CalMCP
-    DocumentAgent -->|MCP| FileMCP
-    ResearchAgent -->|MCP| SearchMCP
-    ResearchAgent -->|MCP| WeatherMCP
-    MemoryAgent -->|MCP| MemoMCP
-    MemoryAgent -->|MCP| VectorMCP
+    REG --> T_BR
+    REG --> T_WE
+    REG --> T_WB
+    REG --> T_SC
+    REG --> T_MO
+    REG --> T_FI
+    REG --> T_SY
+    REG --> T_AL
+    REG --> T_VO
 
-    CalMCP --> SQLite
-    FileMCP --> SQLite
-    MemoMCP --> SQLite
-    VectorMCP --> ChromaDB
-    ProfileLearner --> Profile
+    T_VO -->|"TTS 요약 → 읽기"| OL
+
+    MEM --> DB
+    MEM --> CHROMA
+    DIARY --> DIARYF
+    AG --> LESSONS
+
+    T_SC --> DB
+    T_MO --> MEMDB
+
+    CAL --> DB
+    MEMO --> MEMDB
+    MOB --> AG
+
+    MW --> SN
 ```
 
 ---
 
-## 🧠 하이브리드 LLM 자동 라우팅 흐름
+## 아키텍처 상세
 
-```mermaid
-flowchart TD
-    Input(["💬 사용자 입력"]) --> NetCheck{인터넷\n연결 확인}
-
-    NetCheck -->|"❌ 오프라인"| Ollama["💻 Ollama\nGemma3 12B\n로컬 실행"]
-    NetCheck -->|"✅ 온라인"| ModeCheck{모드 선택}
-
-    ModeCheck -->|"⚙️ 수동 - Ollama"| Ollama
-    ModeCheck -->|"⚙️ 수동 - Claude"| Claude["☁️ Claude API\nSonnet 4"]
-    ModeCheck -->|"🤖 자동 라우팅"| Complexity{작업 복잡도\n분류}
-
-    Complexity -->|"단순 질문\n메모 저장\n날씨 조회"| Ollama
-    Complexity -->|"문서 분석\n복잡한 추론\n다중 에이전트"| Claude
-
-    Ollama --> Response["📤 응답 생성"]
-    Claude --> Response
-    Response --> Memory["💾 ChromaDB\n대화 기억 저장"]
-    Memory --> Profile["📊 사용자 패턴 업데이트"]
-    Profile --> End(["✅ 사용자 출력"])
-```
-
----
-
-## 🤝 A2A 에이전트 협업 흐름
+### AI 에이전트 처리 흐름
 
 ```mermaid
 sequenceDiagram
-    actor User as 👤 사용자
-    participant Orch as 🎯 오케스트레이터
-    participant Mem as 🧠 메모리 Agent
-    participant Sched as 📅 스케줄러 Agent
-    participant Research as 🔍 리서치 Agent
-    participant Doc as 📄 문서 Agent
+    participant U as 사용자
+    participant UI as MainWindow
+    participant CW as ChatWorker(QThread)
+    participant AG as ARIAAgent
+    participant LLM as Claude / Ollama
+    participant TOOL as Tools
 
-    User->>Orch: "내일 캡스톤 발표 준비해줘.\n관련 자료도 찾아줘"
+    U->>UI: 메시지 입력 (키보드 / 음성)
+    UI->>CW: ChatWorker 시작
+    CW->>AG: agent.chat(message)
+    AG->>AG: diary + lessons 로드 → 시스템 프롬프트 생성
+    AG->>LLM: 메시지 전송 (스트리밍)
 
-    Orch->>Mem: 과거 캡스톤 관련 기억 조회 요청
-    Mem-->>Orch: 이전 대화 컨텍스트 반환
-
-    Note over Orch: 병렬 작업 위임 (A2A)
-
-    par 동시 실행
-        Orch->>Sched: 내일 발표 일정 등록 요청
-        Orch->>Research: 캡스톤 발표 관련 자료 검색 요청
-        Orch->>Doc: 기존 저장 문서 요약 요청
+    loop 도구 호출 라운드 (최대 5회)
+        LLM-->>AG: tool_call 감지
+        AG->>TOOL: 도구 실행 (날씨/검색/일정 등)
+        TOOL-->>AG: 실행 결과
+        AG->>LLM: 결과 포함하여 재요청
     end
 
-    Sched-->>Orch: "내일 14:00 발표 일정 등록 완료"
-    Research-->>Orch: "관련 자료 5건 수집 완료"
-    Doc-->>Orch: "기존 문서 요약 완료"
+    LLM-->>AG: 최종 텍스트 응답 (스트리밍)
+    AG-->>CW: token yield
+    CW-->>UI: token_received 시그널
+    UI-->>U: 실시간 채팅 표시
 
-    Orch->>Mem: 이번 대화 내용 저장 요청
-    Mem-->>Orch: 저장 완료
+    AG->>AG: diary.append_turn() 저장
+    AG->>AG: memory.save_message() 저장
 
-    Orch->>User: 통합 결과 응답\n+ 능동적 제안 추가
+    alt 음성 입력이었으면
+        UI->>LLM: TTS 요약 요청 (2~3문장 구어체)
+        LLM-->>UI: 요약 텍스트
+        UI->>UI: pyttsx3로 음성 출력
+    end
 ```
 
----
-
-## 🔌 MCP 서버 구조
-
-```mermaid
-graph LR
-    subgraph Agents["에이전트 레이어"]
-        A1["📅 스케줄러"]
-        A2["📄 문서"]
-        A3["🔍 리서치"]
-        A4["🧠 메모리"]
-    end
-
-    subgraph MCP["MCP 서버 (표준 인터페이스)"]
-        S1["📆 Calendar MCP\nadd_schedule()\nget_schedule()\ndelete_schedule()"]
-        S2["📁 File MCP\nread_file()\nwrite_file()\nlist_files()"]
-        S3["🌐 Search MCP\nweb_search()\nget_news()\nget_weather()"]
-        S4["📝 Memo MCP\nsave_memo()\nsearch_memo()\ntag_memo()"]
-        S5["🗃️ Vector MCP\nembed_text()\nsimilarity_search()\nstore_memory()"]
-    end
-
-    subgraph External["외부 서비스 · 로컬 저장소"]
-        E1["Google Calendar API\n또는 로컬 SQLite"]
-        E2["로컬 파일시스템"]
-        E3["DuckDuckGo\nOpenWeather API\nRSS 피드"]
-        E4["SQLite DB"]
-        E5["ChromaDB"]
-    end
-
-    A1 -->|MCP 프로토콜| S1
-    A2 -->|MCP 프로토콜| S2
-    A3 -->|MCP 프로토콜| S3
-    A4 -->|MCP 프로토콜| S4
-    A4 -->|MCP 프로토콜| S5
-
-    S1 --> E1
-    S2 --> E2
-    S3 --> E3
-    S4 --> E4
-    S5 --> E5
-```
-
-> **MCP의 핵심 장점**: 새 기능 추가 시 기존 코드 수정 없이 MCP 서버만 추가하면 됨
-> → 향후 Slack MCP, 이메일 MCP, GitHub MCP 등 무제한 확장 가능
-
----
-
-## 🧠 장기 기억 (RAG) 구조
+### 음성 I/O 흐름
 
 ```mermaid
 flowchart LR
-    subgraph Input["입력 데이터"]
-        Conv["💬 대화 내용"]
-        Memo["📝 메모"]
-        File["📄 문서 파일\nPDF · DOCX · TXT"]
+    subgraph IN["음성 입력"]
+        A["🔔 '아리아' 감지\nwake_word.py"] -->|"호출어 인식"| B["녹음 시작\nsounddevice"]
+        C["🎤 마이크 버튼\nPush-to-talk"] --> B
+        B --> D["Google STT\nrecognize_google()"]
+        D -->|"한국어 텍스트"| E["채팅 전송"]
     end
 
-    subgraph Process["처리"]
-        Embed["🔢 임베딩 변환\n(nomic-embed-text)"]
-        Chunk["✂️ 청크 분할"]
+    subgraph OUT["음성 출력 (음성 입력에만 반응)"]
+        E --> F["AI 답변 생성"]
+        F --> G["Ollama TTS 요약\n2~3문장 구어체"]
+        G --> H["pyttsx3 한국어 TTS"]
     end
-
-    subgraph Store["저장"]
-        VectorDB["🗃️ ChromaDB\n벡터 DB"]
-    end
-
-    subgraph Retrieve["검색 및 활용"]
-        Query["🔍 유사도 검색"]
-        Context["📋 컨텍스트 주입"]
-        LLM["🧠 LLM 응답 생성"]
-    end
-
-    Conv --> Embed
-    Memo --> Chunk
-    File --> Chunk
-    Chunk --> Embed
-    Embed --> VectorDB
-    VectorDB --> Query
-    Query --> Context
-    Context --> LLM
 ```
 
-> **"저번에 말한 캡스톤 주제가 뭐였지?"** → 몇 주 전 대화도 정확히 기억해서 답변
-
----
-
-## 📅 개발 로드맵
+### 브리핑 흐름
 
 ```mermaid
-gantt
-    title ARIA 개발 로드맵 (16주)
-    dateFormat  YYYY-MM-DD
-
-    section Phase 1 - 기반 구축
-    Ollama + Python 환경 세팅       :p1a, 2025-03-03, 5d
-    Claude API + LLM Manager 구현   :p1b, after p1a, 7d
-    기본 채팅 UI (PyQt6)            :p1c, after p1b, 7d
-
-    section Phase 2 - MCP 서버 구축
-    Calendar MCP 서버 개발          :p2a, 2025-03-24, 7d
-    File & Memo MCP 서버 개발       :p2b, after p2a, 7d
-    Weather & Search MCP 개발       :p2c, after p2b, 7d
-    Vector MCP + ChromaDB 연동      :p2d, after p2c, 7d
-
-    section Phase 3 - A2A 에이전트
-    메인 오케스트레이터 구현         :p3a, 2025-04-21, 7d
-    스케줄러 & 문서 Agent 구현      :p3b, after p3a, 7d
-    리서치 & 메모리 Agent 구현      :p3c, after p3b, 7d
-
-    section Phase 4 - 고도화
-    음성 입출력 (Whisper + TTS)     :p4a, 2025-05-12, 7d
-    사용자 패턴 학습 & 능동 제안    :p4b, after p4a, 7d
-    UI 완성 & 통합 테스트           :p4c, after p4b, 7d
-
-    section Phase 5 - 마무리
-    버그 수정 & 최적화              :p5a, 2025-06-02, 5d
-    발표 자료 & 시연 준비           :p5b, after p5a, 9d
+flowchart TD
+    A["앱 시작 / '브리핑' 요청"] --> B["get_briefing()"]
+    B --> C1["날씨 조회\nOpenWeatherMap"]
+    B --> C2["일정 조회\nSQLite"]
+    B --> C3["뉴스 검색\nDuckDuckGo 오늘"]
+    C1 & C2 & C3 -->|"병렬 ThreadPoolExecutor"| D["데이터 병합"]
+    D --> E["뉴스 링크 분리\nARIA_NEWS_LINKS 마커"]
+    E --> F["AI 자연어 요약\n링크 없는 데이터만 전달"]
+    F --> G["채팅에 요약 표시"]
+    E --> H["실제 URL 직접 추가\n환각 방지"]
+    H --> G
 ```
 
 ---
 
-## 🛠️ 기술 스택
+## 설치 및 실행
 
-| 분류 | 기술 | 선택 이유 |
-|---|---|---|
-| **LLM (로컬)** | Ollama + Gemma3 12B | 오프라인 동작, 빠른 응답, 자연스러운 말투 |
-| **LLM (클라우드)** | Claude API (Sonnet 4) | MCP 네이티브 지원, 최고 수준 한국어 |
-| **MCP** | Python MCP SDK | Anthropic 공식 표준 프로토콜 |
-| **A2A** | Google A2A SDK | 멀티 에이전트 표준 프로토콜 |
-| **GUI** | PyQt6 | 데스크탑 앱 배포, 풍부한 위젯 |
-| **음성 인식** | OpenAI Whisper (로컬) | 한국어 인식률 최상, 오프라인 동작 |
-| **음성 합성** | pyttsx3 / Coqui TTS | 완전 로컬, 빠른 응답 |
-| **벡터 DB** | ChromaDB | 완전 로컬, 설치 간단, 장기 기억 |
-| **관계형 DB** | SQLite | 경량 로컬 DB, 일정·메모 저장 |
-| **스케줄러** | APScheduler | 알림, 백그라운드 작업 |
-| **임베딩** | nomic-embed-text | Ollama 지원, 로컬 실행 |
-| **웹 검색** | DuckDuckGo Search | 무료, API 키 불필요 |
-| **날씨** | OpenWeatherMap API | 무료 플랜 제공 |
-| **뉴스** | RSS Feed + AI 요약 | 실시간 뉴스, 비용 없음 |
+### 요구사항
+
+- Python 3.11+
+- Windows 10/11
+- Ollama (로컬 모드 사용 시) 또는 Claude API 키
+- 마이크 (음성 기능 사용 시)
+
+### 설치
+
+```bash
+git clone https://github.com/your/ARIA.git
+cd ARIA
+
+python -m venv venv
+venv\Scripts\activate
+
+pip install -r requirements.txt
+```
+
+### 실행
+
+```bash
+# 더블클릭
+run.bat
+
+# 또는 터미널에서
+python main.py
+```
+
+### Ollama 모델 설치 (로컬 모드)
+
+```bash
+ollama pull gemma3:12b   # 기본 권장 모델 (~8GB VRAM)
+ollama pull qwen3:8b     # 경량 대안 (~5GB VRAM)
+```
 
 ---
 
-## 📁 프로젝트 폴더 구조
+## 환경 변수 설정
+
+프로젝트 루트에 `.env` 파일을 생성하세요:
+
+```env
+# ── AI 모드 ──────────────────────────────────
+# claude | ollama | auto
+LLM_MODE=ollama
+
+# ── Claude API (LLM_MODE=claude 시 필수) ─────
+CLAUDE_API_KEY=sk-ant-...
+
+# ── Ollama 설정 ───────────────────────────────
+OLLAMA_BASE_URL=http://localhost:11434
+OLLAMA_MODEL=gemma3:12b
+# 모델 VRAM 유지 시간 (0 = 즉시 해제, -1 = 영구 유지)
+OLLAMA_KEEP_ALIVE=10m
+
+# ── 날씨 API (없으면 기본 키 사용) ───────────
+OPENWEATHER_API_KEY=your_key_here
+```
+
+---
+
+## 사용 예시
+
+### 텍스트 입력
+
+```
+사용자: 오늘 날씨 어때?
+ARIA:   지금 서울은 맑고 기온은 18도예요. 미세먼지는 보통 수준이고,
+        오후엔 구름이 조금 낄 것 같아요.
+
+사용자: 내일 오후 3시에 팀 미팅 일정 추가해줘
+ARIA:   내일(4월 1일) 오후 3시에 "팀 미팅" 일정을 추가했어요.
+
+사용자: 파이썬으로 피보나치 함수 만들어줘
+ARIA:   (코드 직접 채팅에 출력 — 파일 저장은 명시적으로 요청할 때만)
+
+사용자: 이번 주 뉴스 검색해줘
+ARIA:   (DuckDuckGo 검색 후 오늘 기준 주요 뉴스 5건 + 클릭 가능한 링크 표시)
+```
+
+### 음성 입력 (마이크 버튼 / 호출어)
+
+```
+[마이크 버튼 클릭 또는 "아리아" 호출]
+
+사용자: (음성) 오늘 브리핑해줘
+ARIA:   (채팅: 전체 브리핑 텍스트 표시)
+        (TTS: "오늘 서울 날씨는 맑고 18도예요. 오늘 일정은 오후 3시 팀 미팅이 있어요.")
+
+사용자: (음성) 유튜브에서 재즈 틀어줘
+ARIA:   (브라우저에서 YouTube 자동 재생)
+        (TTS: "재즈 음악 재생할게요.")
+```
+
+### 파일 첨부
+
+```
+사용자: [이미지 첨부] 이 사진에서 뭐가 보여?
+사용자: [PDF 첨부]  이 문서 요약해줘
+사용자: [.py 첨부]  이 코드 리뷰해줘
+```
+
+### 모바일 접속
+
+같은 WiFi에 연결된 스마트폰 브라우저에서:
+```
+http://{PC의 로컬 IP}:8765
+```
+ARIA 시작 시 터미널에 접속 주소가 출력됩니다.
+
+---
+
+## 커스터마이징
+
+### AI 모델 변경
+
+`config.py` 또는 `.env`에서 설정:
+
+```env
+# 더 가벼운 모델 (속도 우선)
+OLLAMA_MODEL=qwen3:8b
+
+# 더 정확한 모델 (품질 우선, VRAM 많이 필요)
+OLLAMA_MODEL=gemma3:27b
+```
+
+### 시스템 프롬프트 커스터마이징
+
+`config.py`의 `get_system_prompt()` 함수에서 AI 성격, 응답 스타일, 도구 사용 규칙을 수정할 수 있습니다.
+
+```python
+# config.py 예시 — 사용자 이름 고정
+base = f"""
+당신은 {사용자이름}의 개인 비서 ARIA입니다.
+...
+"""
+```
+
+### 호출어 변경
+
+`tools/wake_word.py`에서 감지 단어를 수정:
+
+```python
+WAKE_WORDS = {"아리아", "aria", "자비스", "헤이 아리아"}
+```
+
+### TTS 속도/목소리 변경
+
+`tools/voice_tools.py`의 `_get_tts()` 함수에서:
+
+```python
+_tts_engine.setProperty("rate", 175)   # 속도 (기본 175, 높을수록 빠름)
+_tts_engine.setProperty("volume", 0.9) # 볼륨 (0.0 ~ 1.0)
+```
+
+### 사이드바 갱신 주기 변경
+
+`ui/sidebar_agents.py`에서:
+
+```python
+class WeatherAgent(QThread):
+    INTERVAL = 600   # 초 단위, 기본 10분
+
+class NewsAgent(QThread):
+    INTERVAL = 300   # 기본 5분
+
+class ScheduleAgent(QThread):
+    INTERVAL = 30    # 기본 30초
+```
+
+### 새 도구 추가
+
+1. `tools/my_tool.py` 생성:
+
+```python
+MY_TOOLS = [{
+    "name": "my_tool",
+    "description": "도구 설명",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "param": {"type": "string", "description": "파라미터 설명"}
+        },
+        "required": ["param"]
+    }
+}]
+
+TOOL_FUNCTIONS = {
+    "my_tool": lambda param: f"결과: {param}"
+}
+```
+
+2. `core/agent.py`에 등록:
+
+```python
+from tools.my_tool import MY_TOOLS, TOOL_FUNCTIONS as MY_FN
+
+ALL_TOOLS = (...기존..., *MY_TOOLS)
+ALL_FUNCTIONS = {...기존..., **MY_FN}
+```
+
+---
+
+## 도구 목록
+
+| 도구 | 함수 | 설명 |
+|------|------|------|
+| 브리핑 | `get_briefing` | 날씨 + 일정 + 뉴스 한번에 요약 |
+| 날씨 | `get_current_weather` | 현재 날씨, 미세먼지, 체감온도 |
+| 날씨 예보 | `get_weather_forecast` | 시간별 3일 예보 |
+| 웹 검색 | `web_search` | DuckDuckGo 검색 |
+| 뉴스 | `web_news` | 오늘 최신 뉴스 (d→w→없음 폴백) |
+| 유튜브 | `play_youtube` | 검색 후 브라우저 자동 재생 |
+| 일정 추가 | `add_schedule` | 자연어 날짜 파싱 ("내일 3시") |
+| 일정 조회 | `get_today_schedule` / `list_schedules` | 오늘/N일 일정 |
+| 메모 저장 | `save_memo` | 제목 + 내용 + 태그 저장 |
+| 메모 검색 | `search_memos` | 제목/내용/태그 검색 |
+| 파일 읽기 | `read_file` | 텍스트 파일 내용 읽기 |
+| 파일 생성 | `write_file` | 파일 생성/덮어쓰기 |
+| 파일 검색 | `search_files` | 정규식 파일 검색 |
+| 앱 실행 | `open_application` | 브라우저, 탐색기, 메모장 등 |
+| 클립보드 | `set_clipboard` / `get_clipboard` | 클립보드 읽기/쓰기 |
+| 시스템 정보 | `get_system_info` | CPU, RAM, 디스크 |
+| 알람 | `set_alarm` | 팝업 + 소리 알람 설정 |
+| 리서치 | `research_with_agent` | SubAgent에 웹 리서치 위임 |
+
+---
+
+## 디렉토리 구조
 
 ```
 ARIA/
-├── main.py                      # 앱 진입점
-├── config.py                    # API 키 & 설정 (env 기반)
+├── main.py                  # 앱 진입점
+├── config.py                # 설정 + 동적 시스템 프롬프트
 ├── requirements.txt
+├── run.bat                  # Windows 실행 스크립트
+├── .env                     # 환경 변수 (gitignore)
 │
-├── core/                        # 핵심 엔진
-│   ├── llm_manager.py           # 하이브리드 LLM 관리 & 자동 라우팅
-│   ├── orchestrator.py          # 메인 오케스트레이터 (A2A 위임)
-│   ├── context_manager.py       # 대화 컨텍스트 유지
-│   └── profile_learner.py       # 사용자 패턴 학습
+├── core/
+│   ├── agent.py             # Claude/Ollama 통합 에이전트
+│   ├── memory.py            # 장기 기억 (ChromaDB + SQLite)
+│   ├── diary.py             # 일일 대화 기록 (Markdown)
+│   ├── mcp_server.py        # 도구 레지스트리
+│   └── a2a.py               # SubAgent 프레임워크
 │
-├── agents/                      # A2A 에이전트들
-│   ├── base_agent.py            # 공통 베이스 클래스
-│   ├── scheduler_agent.py       # 일정 관리 에이전트
-│   ├── document_agent.py        # 문서 처리 에이전트
-│   ├── research_agent.py        # 리서치 에이전트
-│   └── memory_agent.py          # 기억 관리 에이전트
+├── tools/
+│   ├── briefing_tools.py    # 오늘 브리핑
+│   ├── weather_tools.py     # 날씨 + 미세먼지
+│   ├── web_tools.py         # 웹 검색 · 뉴스 · YouTube
+│   ├── schedule_tools.py    # 일정 CRUD
+│   ├── memo_tools.py        # 메모 CRUD
+│   ├── file_tools.py        # 파일 관리
+│   ├── system_tools.py      # 앱 실행 · 클립보드 · 시스템
+│   ├── alarm_tools.py       # 알람 설정
+│   ├── agent_tools.py       # SubAgent 호출
+│   ├── voice_tools.py       # STT (Google) + TTS (pyttsx3)
+│   ├── wake_word.py         # 호출어 감지 ("아리아")
+│   ├── attachment_tools.py  # 첨부파일 처리
+│   ├── calendar_server.py   # 달력 웹 서버 (:7654)
+│   └── memo_server.py       # 메모장 웹 서버 (:7655)
 │
-├── mcp_servers/                 # MCP 서버들
-│   ├── calendar_mcp.py          # 캘린더 MCP
-│   ├── file_mcp.py              # 파일시스템 MCP
-│   ├── search_mcp.py            # 웹 검색 MCP
-│   ├── memo_mcp.py              # 메모 MCP
-│   ├── vector_mcp.py            # 벡터 DB MCP
-│   └── weather_mcp.py           # 날씨 MCP
+├── ui/
+│   ├── main_window.py       # 메인 채팅 UI (PyQt6)
+│   ├── sidebar_agents.py    # 자동 갱신 사이드바
+│   └── schedule_notifier.py # 일정 팝업 알림
 │
-├── memory/
-│   ├── vector_store.py          # ChromaDB 관리
-│   ├── embedder.py              # 텍스트 임베딩
-│   └── retriever.py             # 유사도 검색
+├── services/
+│   └── mobile_server.py     # 모바일 웹 서버 (:8765)
 │
-├── voice/
-│   ├── stt.py                   # 음성 인식 (Whisper 로컬)
-│   └── tts.py                   # 음성 합성
-│
-├── ui/                          # PyQt6 UI
-│   ├── main_window.py           # 메인 대시보드
-│   ├── chat_widget.py           # AI 채팅창
-│   ├── calendar_widget.py       # 캘린더 뷰
-│   ├── weather_widget.py        # 날씨 위젯
-│   ├── news_widget.py           # 뉴스 위젯
-│   └── model_toggle.py          # LLM 전환 스위치
-│
-├── services/                    # 외부 서비스 연동
-│   ├── weather.py               # OpenWeather API
-│   ├── news.py                  # RSS 뉴스 수집
-│   └── web_search.py            # DuckDuckGo 검색
-│
-├── data/                        # 로컬 데이터 (gitignore)
-│   ├── chroma_db/               # 벡터 DB
-│   ├── aria.db                  # SQLite DB
-│   └── user_profile.json        # 사용자 패턴 프로필
-│
-└── tests/
-    ├── test_llm_manager.py
-    ├── test_agents.py
-    └── test_mcp_servers.py
+└── data/                    # 로컬 데이터 (자동 생성)
+    ├── aria.db              # 대화 · 일정 (SQLite)
+    ├── memos.db             # 메모 (SQLite)
+    ├── alarms.json          # 알람 설정
+    ├── lessons.json         # 학습된 교정 사항
+    ├── chroma/              # 벡터 저장소
+    └── diary/               # 일일 대화 Markdown
 ```
 
 ---
 
-## ✨ 핵심 기능 명세
+## 트러블슈팅 / FAQ
 
-### 💬 자연어 대화
-- 한국어/영어 혼용 자연스러운 대화
-- AI스럽지 않은 친근한 말투 (페르소나 설계)
-- 이전 대화 맥락 유지 및 연속 대화
-
-### 📅 일정 관리
-- "내일 오후 3시 팀미팅 등록해줘" → 자동 캘린더 등록
-- 오늘/이번 주 일정 조회
-- 일정 30분 전 자동 알림 팝업
-
-### 🧠 장기 기억
-- 과거 대화, 메모, 문서를 ChromaDB에 영구 저장
-- "저번에 말한 캡스톤 주제가 뭐였지?" → 정확히 기억
-
-### 📄 문서 요약
-- PDF, DOCX, TXT 업로드 → 핵심 요약
-- 논문 분석: 목적/방법/결론 구조화 추출
-
-### 🌤️ 날씨 & 📰 뉴스
-- 실시간 날씨 조회 및 예보
-- RSS 뉴스 수집 후 AI가 핵심만 요약
-
-### 💡 능동적 제안
-- 사용자 패턴 학습 후 먼저 제안
-- "내일 발표 있는데, 오늘 준비 시작할까요?"
-
-### 🎙️ 음성 인터페이스
-- 한국어 음성 명령 인식 (Whisper 로컬)
-- 자연스러운 한국어 음성 응답 (TTS)
-
----
-
-## 🔮 향후 확장 계획
-
-- [ ] Slack MCP 서버 추가 (메시지 전송/조회)
-- [ ] 이메일 MCP 서버 추가
-- [ ] GitHub MCP 서버 추가 (이슈/PR 관리)
-- [ ] 모바일 앱 연동 (원격 알림)
-- [ ] 사용자별 파인튜닝 모델 적용
-- [ ] 다중 사용자 지원
-
----
-
-## 🖥️ 개발 환경
+### Ollama 연결 오류
 
 ```
-OS        : Windows 11
-CPU       : AMD Ryzen 9 7945HX (16 Core / 32 Thread)
-RAM       : 32GB DDR5
-GPU       : NVIDIA RTX 4070 Laptop (8GB VRAM)
-SSD       : Samsung 980 Pro 2TB (NVMe)
-Python    : 3.11+
-CUDA      : 12.x
+❌ Ollama 오류: ... Ollama가 실행 중인지 확인해주세요
+```
+
+- Ollama 앱이 실행 중인지 확인: `http://localhost:11434`
+- 모델이 설치돼 있는지 확인: `ollama list`
+- `.env`의 `OLLAMA_MODEL` 값이 설치된 모델명과 일치하는지 확인
+
+---
+
+### 음성 인식이 안 돼요
+
+- 마이크 권한이 허용돼 있는지 확인 (Windows 설정 → 개인 정보 → 마이크)
+- 인터넷 연결 필요 — Google STT는 온라인 서비스입니다
+- `sounddevice`, `SpeechRecognition` 패키지가 설치됐는지 확인:
+  ```bash
+  pip install sounddevice SpeechRecognition
+  ```
+
+---
+
+### TTS가 소리가 안 나요
+
+- Windows 기본 한국어 TTS 음성이 설치돼 있어야 합니다
+- 설정 → 시간 및 언어 → 음성 → 음성 추가에서 한국어 음성 설치
+- `pyttsx3` 패키지 재설치:
+  ```bash
+  pip uninstall pyttsx3 && pip install pyttsx3
+  ```
+
+---
+
+### 날씨가 안 나와요
+
+- OpenWeatherMap API 키 확인 (`.env`의 `OPENWEATHER_API_KEY`)
+- IP 위치 감지 실패 시 수동으로 도시 지정:
+  ```
+  사용자: 서울 날씨 알려줘
+  ```
+
+---
+
+### 브리핑이 자동 실행 안 돼요
+
+- 앱 시작 후 1.5초 뒤 자동 실행됩니다 (Ollama 초기화 대기)
+- Ollama 모델 로딩이 느리면 더 걸릴 수 있습니다
+- 수동으로 "오늘 브리핑해줘"라고 입력하면 강제 실행됩니다
+
+---
+
+### 메모리/VRAM 부족
+
+- 경량 모델로 교체: `.env`에서 `OLLAMA_MODEL=qwen3:8b`
+- 응답 후 VRAM 자동 해제 시간 단축: `OLLAMA_KEEP_ALIVE=2m`
+- 즉시 해제: UI 상단 "모델 해제" 버튼 클릭
+
+---
+
+### ChromaDB 오류 (첫 실행 시)
+
+```bash
+# data/chroma 폴더 삭제 후 재시작
+rmdir /s /q data\chroma
+python main.py
 ```
 
 ---
 
-## 🎓 캡스톤 디자인 어필 포인트
+## 개발 참고
 
-> *"단순한 Claude API 래퍼가 아닙니다.*
-> *MCP · A2A 최신 표준 프로토콜을 적용한 확장 가능한 구조,*
-> *오프라인에서도 동작하는 하이브리드 LLM,*
-> *ChromaDB 기반 장기 기억으로 진짜 나를 아는 비서를 구현했습니다."*
+### 주요 클래스 및 진입점
+
+| 파일 | 클래스/함수 | 역할 |
+|------|------------|------|
+| `core/agent.py` | `ARIAAgent.chat()` | AI 응답 생성 (Generator) |
+| `core/agent.py` | `ARIAAgent._chat_ollama_native()` | Ollama native tool calling |
+| `core/agent.py` | `ARIAAgent._chat_claude()` | Claude API tool_use |
+| `core/memory.py` | `MemorySystem` | ChromaDB + SQLite 기억 |
+| `core/diary.py` | `append_turn()` / `get_today_context()` | 일일 대화 기록 |
+| `core/mcp_server.py` | `ToolRegistry.execute()` | 도구 실행 엔트리포인트 |
+| `ui/main_window.py` | `ChatWorker` | 비동기 AI 응답 스레드 |
+| `ui/sidebar_agents.py` | `WeatherAgent` / `NewsAgent` | 자동 갱신 QThread |
+
+### AI 모드 전환 로직
+
+```python
+# config.py
+LLM_MODE = "ollama"   # claude | ollama | auto
+
+# agent.py — 자동 감지
+def _detect_mode(self) -> str:
+    if LLM_MODE == "claude" and CLAUDE_API_KEY:
+        return "claude"
+    if LLM_MODE == "ollama":
+        return "ollama"
+    if CLAUDE_API_KEY:        # auto: Claude 키 있으면 Claude
+        return "claude"
+    return "ollama"           # auto: 없으면 Ollama
+```
+
+### 도구 등록 패턴
+
+모든 도구는 Claude API 형식(`input_schema`)으로 정의하고, `ToolRegistry`가 Ollama 형식으로 자동 변환합니다:
+
+```python
+# tools/my_tool.py
+MY_TOOLS = [{
+    "name": "my_tool",
+    "description": "...",
+    "input_schema": {
+        "type": "object",
+        "properties": {...},
+        "required": [...]
+    }
+}]
+TOOL_FUNCTIONS = {"my_tool": my_function}
+```
+
+### 스트리밍 응답 구조
+
+```python
+# ChatWorker (QThread) → MainWindow 시그널
+class ChatWorker(QThread):
+    token_received = pyqtSignal(str)  # 토큰 단위 스트리밍
+    finished = pyqtSignal()
+    error = pyqtSignal(str)
+
+    def run(self):
+        for token in self.agent.chat(self.message):
+            self.token_received.emit(token)
+        self.finished.emit()
+```
+
+### 웹 API 엔드포인트 (모바일 서버)
+
+| 메서드 | 경로 | 설명 |
+|--------|------|------|
+| `GET` | `/` | 모바일 채팅 웹 UI |
+| `POST` | `/api/chat` | 채팅 (JSON: `{"message": "..."}`) |
+| `GET` | `/api/schedules` | 오늘 일정 목록 |
+| `POST` | `/api/schedule` | 일정 추가 |
+| `GET` | `/api/weather` | 현재 날씨 |
 
 ---
 
-*본 프로젝트는 캡스톤 디자인 수업 1인 프로젝트로 개발되었습니다.*
+## 기술 스택
+
+| 영역 | 기술 |
+|------|------|
+| GUI | PyQt6 |
+| AI (클라우드) | Anthropic Claude API (claude-sonnet-4-6) |
+| AI (로컬) | Ollama (gemma3, qwen3) |
+| 음성 인식 | SpeechRecognition + Google STT |
+| 음성 합성 | pyttsx3 |
+| 벡터 DB | ChromaDB |
+| 관계형 DB | SQLite |
+| 웹 서버 | FastAPI + uvicorn |
+| 웹 검색 | duckduckgo-search |
+| 날씨 | OpenWeatherMap API |
+| YouTube | yt-dlp |
+
+---
+
+## 라이선스
+
+이 프로젝트는 개인 학습 및 비상업적 사용을 위해 제작되었습니다.
+
+- **Anthropic Claude API** — [Anthropic 이용약관](https://www.anthropic.com/legal/aup) 준수
+- **Ollama** — MIT License
+- **OpenWeatherMap** — Free tier 사용 (비상업적)
+- **DuckDuckGo Search** — 비상업적 개인 사용
+
+---
+
+*ARIA — 로컬에서 돌아가는 나만의 AI 비서*
